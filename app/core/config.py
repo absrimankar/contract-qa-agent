@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
     TOP_K: int = 4
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @property
     def DATA_DIR(self) -> Path:

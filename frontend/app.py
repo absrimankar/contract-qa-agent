@@ -1,7 +1,39 @@
-import requests
+"""
+Standalone Streamlit app — no FastAPI backend required.
+Imports the ingestion pipeline, vector store, and LangGraph agent directly.
+Designed for Streamlit Cloud: set ANTHROPIC_API_KEY in App Secrets.
+"""
+
+import os
+import sys
+from pathlib import Path
+
 import streamlit as st
 
-API_BASE = "http://localhost:8000"
+# ---------------------------------------------------------------------------
+# Bootstrap: sys.path + secrets injection
+# Must happen before any `app.*` imports so pydantic-settings sees the key.
+# ---------------------------------------------------------------------------
+
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+# Streamlit Cloud secrets → os.environ (pydantic-settings reads from env)
+if hasattr(st, "secrets"):
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ.setdefault(_k, _v)
+
+# ---------------------------------------------------------------------------
+# App imports (safe now that env is populated)
+# ---------------------------------------------------------------------------
+
+from app.agent.graph import create_agent, run_agent  # noqa: E402
+from app.ingestion.chunker import chunk_pages  # noqa: E402
+from app.ingestion.embedder import build_index  # noqa: E402
+from app.ingestion.pdf_parser import parse_pdf  # noqa: E402
+from app.vectorstore.store import VectorStore  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -21,6 +53,34 @@ if "contract_loaded" not in st.session_state:
     st.session_state.contract_loaded = False
 if "chat_history" not in st.session_state:
     st.session_state.chat_history: list[dict] = []
+if "agent" not in st.session_state:
+    st.session_state.agent = None
+
+# ---------------------------------------------------------------------------
+# Core logic
+# ---------------------------------------------------------------------------
+
+
+def process_contract(file_bytes: bytes) -> tuple[int, int]:
+    """Run the full ingestion pipeline and build a cached agent."""
+    pages = parse_pdf(file_bytes)
+    if not pages:
+        raise ValueError(
+            "No extractable text found in this PDF. "
+            "Scanned / image-only PDFs are not supported."
+        )
+    chunks = chunk_pages(pages)
+    build_index(chunks)
+
+    store = VectorStore()
+    store.load()
+
+    st.session_state.agent = create_agent(store)
+    st.session_state.contract_loaded = True
+    st.session_state.chat_history = []
+
+    return len(pages), len(chunks)
+
 
 # ---------------------------------------------------------------------------
 # Sidebar — contract upload
@@ -36,35 +96,16 @@ with st.sidebar:
         if st.button("Process Contract", type="primary", use_container_width=True):
             with st.spinner("Parsing and indexing contract…"):
                 try:
-                    response = requests.post(
-                        f"{API_BASE}/upload",
-                        files={
-                            "file": (
-                                uploaded_file.name,
-                                uploaded_file.getvalue(),
-                                "application/pdf",
-                            )
-                        },
-                        timeout=120,
+                    page_count, chunk_count = process_contract(uploaded_file.getvalue())
+                    st.success("Contract uploaded and indexed successfully.")
+                    st.info(
+                        f"**Pages indexed:** {page_count}  \n"
+                        f"**Chunks created:** {chunk_count}"
                     )
-                    if response.status_code == 200:
-                        data = response.json()
-                        st.success(data["message"])
-                        st.info(
-                            f"**Pages indexed:** {data['page_count']}  \n"
-                            f"**Chunks created:** {data['chunk_count']}"
-                        )
-                        st.session_state.contract_loaded = True
-                        st.session_state.chat_history = []
-                    else:
-                        detail = response.json().get("detail", "Upload failed.")
-                        st.error(f"Error {response.status_code}: {detail}")
-                except requests.exceptions.ConnectionError:
-                    st.error(
-                        "Cannot reach the API at `localhost:8000`.  \n"
-                        "Make sure the backend is running:  \n"
-                        "```\nuvicorn app.main:app --reload\n```"
-                    )
+                except ValueError as e:
+                    st.error(str(e))
+                except Exception as e:
+                    st.error(f"Unexpected error: {e}")
 
     st.markdown("---")
     st.subheader("2. Ask Questions")
@@ -88,47 +129,30 @@ with st.sidebar:
 
 st.header("Chat with your Contract")
 
-# Render existing chat history
 for msg in st.session_state.chat_history:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Chat input
 if prompt := st.chat_input("Ask a question about the contract…"):
     if not st.session_state.contract_loaded:
         st.warning("Please upload and process a contract first (sidebar).")
         st.stop()
 
-    # Display user message immediately
     st.session_state.chat_history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Query the agent
     with st.chat_message("assistant"):
         with st.spinner("Analysing contract…"):
             try:
-                response = requests.post(
-                    f"{API_BASE}/query",
-                    json={"question": prompt},
-                    timeout=120,
-                )
-                if response.status_code == 200:
-                    answer = response.json()["answer"]
-                    st.markdown(answer)
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": answer}
-                    )
-                else:
-                    detail = response.json().get("detail", "Query failed.")
-                    error_msg = f"Error {response.status_code}: {detail}"
-                    st.error(error_msg)
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": f"**{error_msg}**"}
-                    )
-            except requests.exceptions.ConnectionError:
-                msg = "Lost connection to the API. Is the backend still running?"
-                st.error(msg)
+                answer = run_agent(st.session_state.agent, prompt)
+                st.markdown(answer)
                 st.session_state.chat_history.append(
-                    {"role": "assistant", "content": f"**{msg}**"}
+                    {"role": "assistant", "content": answer}
+                )
+            except Exception as e:
+                error_msg = f"Agent error: {e}"
+                st.error(error_msg)
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": f"**{error_msg}**"}
                 )
