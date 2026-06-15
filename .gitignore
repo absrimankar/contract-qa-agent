@@ -1,0 +1,37 @@
+# Environment
+.env
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Vector store & data
+data/
+*.faiss
+*.pkl
+*.json.bak
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# sentence-transformers / HuggingFace model cache
+.cache/
+~/.cache/huggingface/
+sentence_transformers_cache/
+models/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
