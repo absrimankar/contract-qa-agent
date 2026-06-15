@@ -8,10 +8,8 @@ A RAG-based agent that lets users upload a contract PDF and ask natural language
 
 ## Screenshots
 
-<!-- Add screenshots here -->
-<!-- Suggested: upload images to a `screenshots/` folder and reference them like: -->
-<!-- ![Upload screen](screenshots/upload.png) -->
-<!-- ![Chat interface](screenshots/chat.png) -->
+![Upload screen](screenshots/upload.png)
+![Chat interface](screenshots/chat.png)
 
 ---
 
