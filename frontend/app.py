@@ -1,39 +1,22 @@
-"""
-Standalone Streamlit app — no FastAPI backend required.
-Imports the ingestion pipeline, vector store, and LangGraph agent directly.
-Designed for Streamlit Cloud: set ANTHROPIC_API_KEY in App Secrets.
-"""
-
 import os
-import sys
-from pathlib import Path
-
 import streamlit as st
 
-# ---------------------------------------------------------------------------
-# Bootstrap: sys.path + secrets injection
-# Must happen before any `app.*` imports so pydantic-settings sees the key.
-# ---------------------------------------------------------------------------
+for k, v in st.secrets.items():
+    if isinstance(v, str):
+        os.environ[k] = v
+
+import sys
+from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-# Streamlit Cloud secrets → os.environ (pydantic-settings reads from env)
-if hasattr(st, "secrets"):
-    for _k, _v in st.secrets.items():
-        if isinstance(_v, str):
-            os.environ.setdefault(_k, _v)
-
-# ---------------------------------------------------------------------------
-# App imports (safe now that env is populated)
-# ---------------------------------------------------------------------------
-
-from app.agent.graph import create_agent, run_agent  # noqa: E402
-from app.ingestion.chunker import chunk_pages  # noqa: E402
-from app.ingestion.embedder import build_index  # noqa: E402
-from app.ingestion.pdf_parser import parse_pdf  # noqa: E402
-from app.vectorstore.store import VectorStore  # noqa: E402
+from app.agent.graph import create_agent, run_agent
+from app.ingestion.chunker import chunk_pages
+from app.ingestion.embedder import build_index
+from app.ingestion.pdf_parser import parse_pdf
+from app.vectorstore.store import VectorStore
 
 # ---------------------------------------------------------------------------
 # Page config

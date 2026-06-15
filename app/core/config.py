@@ -1,18 +1,25 @@
+import os
 from pathlib import Path
-from pydantic_settings import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
-class Settings(BaseSettings):
-    ANTHROPIC_API_KEY: str
-    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
-    LLM_MODEL: str = "claude-sonnet-4-6"
-    CHUNK_SIZE: int = 1000
-    CHUNK_OVERLAP: int = 200
-    TOP_K: int = 4
+class Settings:
+    EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+    LLM_MODEL = "claude-sonnet-4-6"
+    CHUNK_SIZE = 1000
+    CHUNK_OVERLAP = 200
+    TOP_K = 4
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    @property
+    def ANTHROPIC_API_KEY(self) -> str:
+        key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY is not set. "
+                "Add it to .env (local) or Streamlit App Secrets (cloud)."
+            )
+        return key
 
     @property
     def DATA_DIR(self) -> Path:
